@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AR ไก่พ่นน้ำ - Hiro Marker</title>
+
+  <!-- A-Frame -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+  <!-- AR.js -->
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/three.js/build/ar-threex.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial, "Noto Sans Thai", sans-serif;
+      background: #000;
+    }
+
+    #title {
+      position: fixed;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      color: white;
+      background: rgba(0,0,0,.65);
+      padding: 10px 18px;
+      border-radius: 14px;
+      font-size: 18px;
+      font-weight: bold;
+      pointer-events: none;
+    }
+
+    #controls {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      z-index: 30;
+      width: min(94vw, 430px);
+      padding: 14px;
+      background: rgba(0,0,0,.72);
+      border-radius: 18px;
+      color: white;
+      backdrop-filter: blur(8px);
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      margin-top: 9px;
+    }
+
+    button {
+      flex: 1;
+      border: 0;
+      border-radius: 12px;
+      padding: 13px 10px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #minus, #plus {
+      background: #fff;
+      color: #111;
+    }
+
+    #stop {
+      background: #e53935;
+      color: white;
+    }
+
+    #start {
+      background: #16a34a;
+      color: white;
+    }
+
+    #status {
+      text-align: center;
+      font-size: 14px;
+      margin-bottom: 5px;
+    }
+
+    #widthValue {
+      text-align: center;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    a-scene {
+      position: fixed !important;
+      inset: 0;
+    }
+  </style>
+
+  <script>
+    let sprayWidth = 1.0;
+    let spraying = true;
+
+    AFRAME.registerComponent('water-spray', {
+      schema: {
+        width: { type: 'number', default: 1 }
+      },
+
+      init: function () {
+        this.particles = [];
+        this.clock = new THREE.Clock();
+
+        // สร้างละอองน้ำจำนวน 55 จุด
+        for (let i = 0; i < 55; i++) {
+          const el = document.createElement('a-sphere');
+
+          el.setAttribute('radius', '0.025');
+          el.setAttribute('color', '#66ccff');
+          el.setAttribute('opacity', '0.82');
+          el.setAttribute('transparent', 'true');
+
+          this.el.appendChild(el);
+
+          this.particles.push({
+            el: el,
+            x: 0,
+            y: 0,
+            z: 0,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            life: 0
+          });
+
+          this.resetParticle(this.particles[this.particles.length - 1]);
+        }
+      },
+
+      resetParticle: function (p) {
+        const w = sprayWidth;
+
+        p.x = 0;
+        p.y = 0;
+        p.z = 0;
+
+        // กระจายเป็นพัดตามความกว้าง
+        p.vx = 0.035 + Math.random() * 0.025;
+        p.vy = (Math.random() - 0.5) * 0.035 * w;
+        p.vz = (Math.random() - 0.5) * 0.06 * w;
+        p.life = 0;
+      },
+
+      tick: function (time, delta) {
+        if (!spraying) {
+          this.particles.forEach(p => p.el.setAttribute('visible', false));
+          return;
+        }
+
+        const dt = Math.min(delta, 50) / 16.67;
+
+        this.particles.forEach(p => {
+          p.el.setAttribute('visible', true);
+
+          p.life += dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.z += p.vz * dt;
+
+          // แรงโน้มถ่วง
+          p.vy -= 0.0015 * dt;
+
+          if (p.life > 45 || p.x > 1.8) {
+            this.resetParticle(p);
+          }
+
+          p.el.object3D.position.set(p.x, p.y, p.z);
+        });
+      }
+    });
+
+    function updateWidth() {
+      document.getElementById('widthValue').textContent =
+        'ความกว้างการพ่นน้ำ: ' + sprayWidth.toFixed(1) + 'x';
+    }
+
+    function changeWidth(amount) {
+      sprayWidth = Math.max(0.3, Math.min(3.0, sprayWidth + amount));
+      updateWidth();
+    }
+
+    function stopSpray() {
+      spraying = false;
+      document.getElementById('status').textContent = '⛔ หยุดพ่นน้ำแล้ว';
+    }
+
+    function startSpray() {
+      spraying = true;
+      document.getElementById('status').textContent = '💦 กำลังพ่นน้ำ';
+    }
+  </script>
+</head>
+
+<body>
+
+  <div id="title">🐔 AR ไก่พ่นน้ำ</div>
+
+  <a-scene
+    embedded
+    vr-mode-ui="enabled: false"
+    renderer="antialias: true; alpha: true"
+    arjs="sourceType: webcam; debugUIEnabled: false;">
+
+    <!-- Hiro Marker -->
+    <a-marker preset="hiro">
+
+      <!-- ตัวไก่แบบ 3D สร้างจาก A-Frame primitives -->
+      <a-entity position="0 0 0">
+
+        <!-- ลำตัว -->
+        <a-sphere
+          position="0 0.65 0"
+          scale="0.55 0.42 0.45"
+          color="#f5f5f5">
+        </a-sphere>
+
+        <!-- หัว -->
+        <a-sphere
+          position="0 1.18 0"
+          radius="0.32"
+          color="#ffffff">
+        </a-sphere>
+
+        <!-- หงอน -->
+        <a-cone
+          position="0 1.52 0"
+          radius-bottom="0.13"
+          radius-top="0"
+          height="0.28"
+          color="#e53935">
+        </a-cone>
+
+        <!-- จะงอยปาก -->
+        <a-cone
+          position="0.34 1.18 0"
+          rotation="0 0 -90"
+          radius-bottom="0.10"
+          radius-top="0"
+          height="0.25"
+          color="#ffb300">
+        </a-cone>
+
+        <!-- ตาซ้าย -->
+        <a-sphere
+          position="0.22 1.27 -0.22"
+          radius="0.045"
+          color="#111111">
+        </a-sphere>
+
+        <!-- ตาขวา -->
+        <a-sphere
+          position="0.22 1.27 0.22"
+          radius="0.045"
+          color="#111111">
+        </a-sphere>
+
+        <!-- ปีก -->
+        <a-sphere
+          position="-0.42 0.75 0"
+          scale="0.25 0.35 0.12"
+          rotation="0 0 -25"
+          color="#eeeeee">
+        </a-sphere>
+
+        <!-- ขา -->
+        <a-cylinder
+          position="-0.18 0.20 0"
+          radius="0.035"
+          height="0.35"
+          color="#ffb300">
+        </a-cylinder>
+
+        <a-cylinder
+          position="0.18 0.20 0"
+          radius="0.035"
+          height="0.35"
+          color="#ffb300">
+        </a-cylinder>
+
+        <!-- หัวฉีดน้ำ -->
+        <a-cylinder
+          position="0.45 0.88 0"
+          rotation="0 0 90"
+          radius="0.07"
+          height="0.30"
+          color="#555555">
+        </a-cylinder>
+
+        <!-- ละอองน้ำ -->
+        <a-entity
+          position="0.58 0.88 0"
+          water-spray>
+        </a-entity>
+
+      </a-entity>
+
+    </a-marker>
+
+    <a-entity camera></a-entity>
+  </a-scene>
+
+  <div id="controls">
+    <div id="status">💦 กำลังพ่นน้ำ</div>
+    <div id="widthValue">ความกว้างการพ่นน้ำ: 1.0x</div>
+
+    <div class="row">
+      <button id="minus" onclick="changeWidth(-0.2)">➖ ลดความกว้าง</button>
+      <button id="plus" onclick="changeWidth(0.2)">➕ เพิ่มความกว้าง</button>
+    </div>
+
+    <div class="row">
+      <button id="stop" onclick="stopSpray()">⛔ หยุดพ่นน้ำ</button>
+      <button id="start" onclick="startSpray()">💦 พ่นน้ำ</button>
+    </div>
+  </div>
+
+</body>
+</html>
